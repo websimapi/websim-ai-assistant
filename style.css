@@ -17,12 +17,15 @@ body {
     display: flex;
     flex-direction: column;
     height: 80vh; /* Limit height for better layout */
+    overflow: hidden; /* Prevent chat log from overflowing container initially */
 }
 
 #chat-log {
     flex-grow: 1;
     overflow-y: auto;
     padding: 20px;
+    display: flex; /* Use flexbox for messages */
+    flex-direction: column; /* Stack messages vertically */
     border-bottom: 1px solid #eee;
 }
 
@@ -95,4 +98,3 @@ button {
 #mic-button.recording {
     background-color: #dc3545; /* Red when recording */
 }
-

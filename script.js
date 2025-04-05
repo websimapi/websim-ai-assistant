@@ -14,17 +14,33 @@ let isRecording = false;
 const savedHistory = localStorage.getItem('aiConversationHistory');
 if (savedHistory) {
     conversationHistory = JSON.parse(savedHistory);
-    conversationHistory.forEach(msg => displayMessage(msg.role, msg.content));
+    conversationHistory.forEach(msg => {
+        if (msg.role === 'system') {
+            displayMessage(msg.role, msg.content, true);
+        } else {
+            displayMessage(msg.role, msg.content);
+        }
+    });
     scrollToBottom();
 }
 
 // Function to display messages
-function displayMessage(role, content) {
+function displayMessage(role, content, isInfo = false) {
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message');
-    messageDiv.classList.add(role === 'user' ? 'user-message' : 'ai-message');
+    if (isInfo) {
+        messageDiv.classList.add('info-message'); // Style for info messages if needed
+        messageDiv.style.fontStyle = 'italic'; // Example style
+        messageDiv.style.textAlign = 'center';
+        messageDiv.style.color = '#666';
+        messageDiv.style.alignSelf = 'center'; // Center info messages
+    } else {
+        messageDiv.classList.add(role === 'user' ? 'user-message' : 'ai-message');
+    }
     messageDiv.textContent = content;
     chatLog.appendChild(messageDiv);
+    // Ensure scroll happens *after* the message is added and potentially rendered
+    setTimeout(scrollToBottom, 0);
 }
 
 // Function to scroll chat log to the bottom
@@ -39,6 +55,9 @@ async function sendMessage() {
 
     displayMessage('user', userMessageContent);
     userInput.value = ''; // Clear input field
+    userInput.disabled = true; // Disable input while processing
+    sendButton.disabled = true;
+    micButton.disabled = true;
 
     // Add user message to history
     const newUserMessage = {
@@ -62,13 +81,13 @@ async function sendMessage() {
         const currentProject = await window.websim.getCurrentProject();
         const creator = await window.websim.getCreatedBy();
 
-        const systemPrompt = `You are a helpful AI assistant.
-You have access to local storage for memory and project metadata.
+        const systemPrompt = `You are a helpful AI assistant embedded in a web development environment called Websim.
+You can chat with the user, remember past interactions using conversation history, and potentially use local storage (though direct function calls aren't provided, you can describe what you would store/retrieve).
+You have access to some project context:
 Current Project ID: ${currentProject?.id || 'N/A'}
 Current Project Title: ${currentProject?.title || 'N/A'}
 Project Creator: @${creator?.username || 'N/A'}
-Use the available information and local storage (via hypothetical functions like 'saveToLocalStorage(key, value)' or 'getFromLocalStorage(key)') to assist the user. Be concise and helpful.`;
-
+Be concise, helpful, and aware of your capabilities and limitations within this environment. You cannot directly browse the web or execute code provided by the user unless specifically instructed to use an available tool (like llm-calls).`;
 
         const completion = await llm.chat.completions.create({
             messages: [
@@ -94,13 +113,19 @@ Use the available information and local storage (via hypothetical functions like
 
     } catch (error) {
         console.error("Error communicating with AI:", error);
-        displayMessage('assistant', "Sorry, I encountered an error. Please try again.");
-        // Remove thinking indicator if it exists
+        // Ensure thinking indicator is removed on error
         const thinkingIndicator = chatLog.querySelector('.message.ai-message:last-child');
-         if (thinkingIndicator && thinkingIndicator.textContent === 'Thinking...') {
-              chatLog.removeChild(thinkingIndicator);
-         }
+        if (thinkingIndicator && thinkingIndicator.textContent === 'Thinking...') {
+            chatLog.removeChild(thinkingIndicator);
+        }
+        displayMessage('assistant', "Sorry, I encountered an error. Please try again.");
         scrollToBottom();
+    } finally {
+        // Re-enable input elements
+        userInput.disabled = false;
+        sendButton.disabled = false;
+        micButton.disabled = false;
+        userInput.focus(); // Set focus back to input
     }
 }
 
@@ -132,12 +157,13 @@ async function startRecording() {
             // For this example, we'll simulate transcription by putting a placeholder in the input.
             // Replace this with actual STT API call when available.
             console.log("Audio recorded:", audioBlob);
-            userInput.value = "[Audio Input - STT Needed]"; // Placeholder
+            userInput.value = "[Recording finished. Press Send or edit.]"; // Placeholder
+            displayMessage('system', 'Recording stopped. Edit the text or press Send.', true); // Info message
             // Automatically send the placeholder text for now
             // sendMessage();
             // Or just let the user edit/confirm before sending
-             userInput.focus();
-
+            userInput.focus();
+            userInput.select(); // Select the placeholder text for easy replacement
 
             // Cleanup
             stream.getTracks().forEach(track => track.stop());
@@ -147,6 +173,11 @@ async function startRecording() {
         isRecording = true;
         micButton.classList.add('recording');
         micButton.textContent = '🛑'; // Stop icon
+        micButton.setAttribute('aria-label', 'Stop recording');
+        userInput.placeholder = 'Recording audio...'; // Update placeholder
+        userInput.disabled = true; // Disable text input while recording
+        sendButton.disabled = true; // Disable send while recording
+
     } catch (err) {
         console.error("Error accessing microphone:", err);
         alert("Could not access microphone. Please ensure permission is granted.");
@@ -160,6 +191,10 @@ function stopRecording() {
     isRecording = false;
     micButton.classList.remove('recording');
     micButton.textContent = '🎤'; // Mic icon
+    micButton.setAttribute('aria-label', 'Record audio message');
+    userInput.placeholder = 'Type your message or use the microphone...'; // Restore placeholder
+    userInput.disabled = false; // Re-enable text input
+    sendButton.disabled = false; // Re-enable send button
 }
 
 micButton.addEventListener('click', () => {
@@ -175,4 +210,3 @@ if (conversationHistory.length === 0) {
     displayMessage('assistant', 'Hello! How can I help you today? You can type or use the microphone.');
     scrollToBottom();
 }
-
